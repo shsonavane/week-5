@@ -6,57 +6,69 @@ def survival_demographics():
     url = "https://raw.githubusercontent.com/leontoddjohnson/datasets/main/data/titanic.csv"
     df = pd.read_csv(url)
 
-    # Create categorical age_group (ordered) with fixed category set
+    # Create categorical age_group with explicit dtype
     bins = [0, 12, 19, 59, float("inf")]
     labels = ["Child", "Teen", "Adult", "Senior"]
-    age_grp = pd.cut(df["Age"], bins=bins, labels=labels, right=True)
-    df["age_group"] = pd.Categorical(age_grp, categories=labels, ordered=True)
+    df["age_group"] = pd.Categorical(
+        pd.cut(df["Age"], bins=bins, labels=labels, right=True),
+        categories=labels,
+        ordered=True
+    )
 
-    # Aggregate by Pclass, Sex, age_group
+    # Group by lowercase column names, keep unused cats
     grouped = (
-        df.groupby(["Pclass", "Sex", "age_group"])
-          .agg(n_passengers=("Survived", "size"),
-               n_survivors=("Survived", "sum"))
+        df.groupby(["Pclass", "Sex", "age_group"], observed=False)
+          .agg(
+              n_passengers=("Survived", "size"),
+              n_survivors=("Survived", "sum")
+          )
           .reset_index()
     )
 
-    # Survival rate
+    # Calculate survival rate
     grouped["survival_rate"] = grouped["n_survivors"] / grouped["n_passengers"]
 
-    # Ensure ALL combinations (including zero-member groups) appear
-    all_classes = sorted(df["Pclass"].dropna().unique())
-    all_sexes   = ["female", "male"] if set(df["Sex"].unique()) == set(["female","male"]) \
-                  else sorted(df["Sex"].dropna().unique())
-    full_index = pd.MultiIndex.from_product(
-        [all_classes, all_sexes, labels],
-        names=["Pclass", "Sex", "age_group"]
+    
+    grouped = grouped.rename(columns={
+        "Pclass": "pclass",
+        "Sex": "sex",
+        "age_group": "age_group"
+    })
+
+    
+    grouped["age_group"] = pd.Categorical(
+        grouped["age_group"],
+        categories=labels,
+        ordered=True
     )
 
-    grouped = (
-        grouped.set_index(["Pclass", "Sex", "age_group"])
-               .reindex(full_index, fill_value=0)
-               .reset_index()
-               .sort_values(["Pclass", "Sex", "age_group"])
-               .reset_index(drop=True)
-    )
+    # Sort for readability
+    grouped = grouped.sort_values(["pclass", "sex", "age_group"]).reset_index(drop=True)
 
     return grouped
 
 
+
 def visualize_demographic():
     grouped = survival_demographics()
+
     fig = px.bar(
         grouped,
         x="age_group",
         y="survival_rate",
-        color="Sex",
+        color="sex",        
         barmode="group",
-        facet_col="Pclass",
+        facet_col="pclass",  
         category_orders={"age_group": ["Child", "Teen", "Adult", "Senior"]},
         title="Titanic Survival Rates by Class, Sex, and Age Group"
     )
-    fig.update_layout(yaxis_title="Survival Rate", xaxis_title="Age Group")
+
+    fig.update_layout(
+        yaxis_title="Survival Rate",
+        xaxis_title="Age Group"
+    )
     return fig
+
 
 
 # ------------------ Exercise 2 ------------------
@@ -90,7 +102,7 @@ def last_names():
     last = df["Name"].str.split(",", n=1).str[0].str.strip()
     counts = last.value_counts()
 
-    
+    # Helpful metadata 
     counts.index.name = "last_name"
     counts.name = "count"
     return counts
